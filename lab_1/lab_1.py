@@ -60,7 +60,6 @@ def lambda_handler(event, context):
 def get_job_results(api, job_id):
     text_tract_client = get_client('textract', 'us-east-1')
     blocks = []
-    analysis = {}
     response = text_tract_client.get_document_analysis(
         JobId=job_id
     )
@@ -93,13 +92,9 @@ def get_job_results(api, job_id):
 def process_request(request):
     s3_client = get_client('s3', 'us-east-1')
 
-    output = ""
-
     print("Request : {}".format(request))
 
     job_id = request['job_id']
-    document_id = request['jobTag']
-    job_status = request['jobStatus']
     job_api = request['jobAPI']
     bucket_name = request['bucket_name']
     output_bucket_name = request['output_bucket_name']
@@ -334,7 +329,6 @@ def parsejson_inorder_perpage(response, this_page):
     # input: response - multipage Textract response JSON
     #        this_page - page number : 1,2,3..
     # output: clean parsed JSON for this Page in correct order
-    text_list = []
     id_list_key_value_table = []
     for block in response['Blocks']:
         if block['Page'] == this_page:
@@ -416,7 +410,6 @@ def parsejson_inorder_perpage(response, this_page):
 def write_to_dynamo_db(dd_table_name, id, full_file_path, full_pdf_json):
     # Get the service resource.
     dynamodb = get_resource('dynamodb')
-    dynamodb_client = get_client('dynamodb')
 
     dd_table_name = dd_table_name \
         .replace(" ", "-") \
