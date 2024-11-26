@@ -27,6 +27,9 @@ from botocore.exceptions import ClientError
 from botocore.client import Config
 from urllib.parse import unquote
 
+MIN_TABLE_NAME_LENGTH = 4
+INITIAL_LAST_BOTTOM = 1
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -399,7 +402,7 @@ def parsejson_inorder_perpage(response, this_page):
         ## last line Text to bottom of page:
         last_text = text_list[len(text_list) - 1]['Line']
         last_top = text_list[len(text_list) - 1]['Top']
-        last_bottom = 1
+        last_bottom = INITIAL_LAST_BOTTOM
         this_text_kv = find_key_value_in_range(response, last_top,
                                                last_bottom, this_page)
         this_text_table = get_tables_fromJSON_inrange(response, last_top,
@@ -426,7 +429,7 @@ def write_to_dynamo_db(dd_table_name, id, full_file_path, full_pdf_json):
         .replace("#", 'No') \
         .replace('"', 'Inch')
 
-    if len(dd_table_name) <= 3:
+    if len(dd_table_name) <= MIN_TABLE_NAME_LENGTH:
         dd_table_name = dd_table_name + '-xxxx'
 
     print("DynamoDB table name is {}".format(dd_table_name))
