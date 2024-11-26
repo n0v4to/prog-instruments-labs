@@ -19,6 +19,7 @@ import time
 import logging
 import datetime
 import traceback
+from typing import Any, Dict, Union, Optional, List
 
 import boto3
 import pandas as pd
@@ -34,7 +35,15 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> None:
+    """
+    AWS Lambda handler function to process events from SNS,
+    extract Textract job information, and handle the processing request.
+
+    Args:
+        event (Dict[str, Any]): The event data containing SNS records.
+        context (Any): The Lambda context object providing runtime information.
+    """
     print("Received event: " + json.dumps(event))
 
     for record in event['Records']:
@@ -57,7 +66,17 @@ def lambda_handler(event, context):
         process_request(request)
 
 
-def get_job_results(api, job_id):
+def get_job_results(api: str, job_id: str) -> List[Dict[str, Any]]:
+    """
+    Retrieve the results of a Textract analysis job and parse them into a structured format.
+
+    Args:
+        api (str): The Textract API used for the job (e.g., "AnalyzeDocument").
+        job_id (str): The ID of the Textract job to retrieve results for.
+
+    Returns:
+        List[Dict[str, Any]]: A list of parsed page contents with their page numbers.
+    """
     text_tract_client = get_client('textract', 'us-east-1')
     blocks = []
     response = text_tract_client.get_document_analysis(
@@ -89,7 +108,17 @@ def get_job_results(api, job_id):
     return final_json_all_page
 
 
-def process_request(request):
+def process_request(request: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process a Textract job request, upload the results to S3,
+    and save the metadata to DynamoDB.
+
+    Args:
+        request (Dict[str, Any]): A dictionary containing job details and S3 bucket information.
+
+    Returns:
+        Dict[str, Any]: A dictionary with the HTTP status code and the JSON response body.
+    """
     s3_client = get_client('s3', 'us-east-1')
 
     print("Request : {}".format(request))
@@ -132,7 +161,17 @@ def process_request(request):
     }
 
 
-def find_value_block(key_block, value_map):
+def find_value_block(key_block: Dict[str, Any], value_map: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Find the value block corresponding to a key block.
+
+    Args:
+        key_block (Dict[str, Any]): The block representing the key.
+        value_map (Dict[str, Any]): A dictionary mapping block IDs to blocks.
+
+    Returns:
+        Dict[str, Any]: The value block corresponding to the key block.
+    """
     for relationship in key_block['Relationships']:
         if relationship['Type'] == 'VALUE':
             for value_id in relationship['Ids']:
@@ -140,7 +179,17 @@ def find_value_block(key_block, value_map):
     return value_block
 
 
-def get_text(result, blocks_map):
+def get_text(result: Dict[str, Any], blocks_map: Dict[str, Any]) -> str:
+    """
+    Extract text content from a block result and its child blocks.
+
+    Args:
+        result (Dict[str, Any]): The block containing the parent result.
+        blocks_map (Dict[str, Any]): A dictionary mapping block IDs to blocks.
+
+    Returns:
+        str: The concatenated text content of the block and its children.
+    """
     text = ''
     if 'Relationships' in result:
         for relationship in result['Relationships']:
@@ -156,7 +205,24 @@ def get_text(result, blocks_map):
     return text
 
 
-def find_key_value_in_range(response, top, bottom, this_page):
+def find_key_value_in_range(
+    response: Dict[str, Any],
+    top: float,
+    bottom: float,
+    this_page: int
+) -> Dict[str, str]:
+    """
+    Find key-value pairs in a Textract response within a specified bounding box range.
+
+    Args:
+        response (Dict[str, Any]): The Textract response containing document blocks.
+        top (float): The top boundary of the bounding box range.
+        bottom (float): The bottom boundary of the bounding box range.
+        this_page (int): The page number to filter blocks on.
+
+    Returns:
+        Dict[str, str]: A dictionary of key-value pairs within the specified range.
+    """
 
     blocks = response['Blocks']
     key_map = {}
@@ -187,7 +253,20 @@ def find_key_value_in_range(response, top, bottom, this_page):
     return key_value_pair
 
 
-def get_rows_columns_map(table_result, blocks_map):
+def get_rows_columns_map(
+    table_result: Dict[str, Any],
+    blocks_map: Dict[str, Any]
+) -> Dict[int, Dict[int, str]]:
+    """
+    Create a map of rows and columns from a Textract table block.
+
+    Args:
+        table_result (Dict[str, Any]): A table block containing relationships and cell data.
+        blocks_map (Dict[str, Any]): A dictionary mapping block IDs to blocks.
+
+    Returns:
+        Dict[int, Dict[int, str]]: A nested dictionary where rows map to columns and their text content.
+    """
     rows = {}
     for relationship in table_result['Relationships']:
         if relationship['Type'] == 'CHILD':
@@ -203,7 +282,26 @@ def get_rows_columns_map(table_result, blocks_map):
     return rows
 
 
-def get_tables_fromJSON_inrange(response, top, bottom, this_page):
+def get_tables_from_json_inrange(
+    response: Dict[str, Any],
+    top: float,
+    bottom: float,
+    this_page: int
+) -> Optional[List[List[List[str]]]]:
+    """
+    Extract tables from a Textract response within a specified bounding box range.
+
+    Args:
+        response (Dict[str, Any]): The Textract response containing document blocks.
+        top (float): The top boundary of the bounding box range.
+        bottom (float): The bottom boundary of the bounding box range.
+        this_page (int): The page number to filter blocks on.
+
+    Returns:
+        Optional[List[List[List[str]]]]: A list of tables, where each table is a list of rows,
+                                         and each row is a list of cell text.
+                                         Returns None if no tables are found.
+    """
     # given respones and top/bottom corrdinate, return tables in the range
     blocks = response['Blocks']
     blocks_map = {}
@@ -235,8 +333,25 @@ def get_tables_fromJSON_inrange(response, top, bottom, this_page):
 
 
 ### get tables coordinate in range:
-def get_tables_coord_in_range(response, top, bottom, this_page):
-    # given respones and top/bottom corrdinate, return tables in the range
+def get_tables_coord_in_range(
+    response: Dict[str, Any],
+    top: float,
+    bottom: float,
+    this_page: int
+) -> Optional[List[Dict[str, float]]]:
+    """
+    Retrieve the bounding boxes of tables within a specified range in a Textract response.
+
+    Args:
+        response (Dict[str, Any]): The Textract response containing document blocks.
+        top (float): The top boundary of the bounding box range.
+        bottom (float): The bottom boundary of the bounding box range.
+        this_page (int): The page number to filter blocks on.
+
+    Returns:
+        Optional[List[Dict[str, float]]]: A list of bounding boxes of tables within the range.
+                                          Returns None if no tables are found.
+    """
     blocks = response['Blocks']
     blocks_map = {}
     table_blocks = []
@@ -259,10 +374,20 @@ def get_tables_coord_in_range(response, top, bottom, this_page):
     return all_tables_coord
 
 
-def box_within_box(box1, box2):
-    # check if bounding box1 is completely within bounding box2
-    # box1:{Width,Height,Left,Top}
-    # box2:{Width,Height,Left,Top}
+def box_within_box(
+    box1: Dict[str, float],
+    box2: Dict[str, float]
+) -> bool:
+    """
+    Check if one bounding box is completely within another.
+
+    Args:
+        box1 (Dict[str, float]): The inner bounding box with keys 'Width', 'Height', 'Left', 'Top'.
+        box2 (Dict[str, float]): The outer bounding box with keys 'Width', 'Height', 'Left', 'Top'.
+
+    Returns:
+        bool: True if box1 is within box2, otherwise False.
+    """
     if (box1['Top'] >= box2['Top'] and
             box1['Left'] >= box2['Left'] and
             box1['Top'] + box1['Height'] <= box2['Top'] +
@@ -274,11 +399,24 @@ def box_within_box(box1, box2):
         return False
 
 
-def find_key_value_in_range_not_in_table(response, top, bottom, this_page):
-    # given Textract Response, and [top,bottom] - bounding box need to search for
-    # find Key:value pairs within the bounding box
+def find_key_value_in_range_not_in_table(
+    response: Dict[str, Any],
+    top: float,
+    bottom: float,
+    this_page: int
+) -> Dict[str, str]:
+    """
+    Find key-value pairs within a specified bounding box range that are not inside any table.
 
-    # get key_map,value_map,block_map from response (textract JSON)
+    Args:
+        response (Dict[str, Any]): The Textract response containing document blocks.
+        top (float): The top boundary of the bounding box range.
+        bottom (float): The bottom boundary of the bounding box range.
+        this_page (int): The page number to filter blocks on.
+
+    Returns:
+        Dict[str, str]: A dictionary of key-value pairs outside tables within the specified range.
+    """
     blocks = response['Blocks']
     key_map = {}
     value_map = {}
@@ -322,13 +460,17 @@ def find_key_value_in_range_not_in_table(response, top, bottom, this_page):
                 key_value_pair[key] = val
     return key_value_pair
 
+def parsejson_inorder_perpage(response: Dict[str, Any], this_page: int) -> List[Dict[str, Any]]:
+    """
+    Parses a Textract JSON response to extract information per page in a structured and ordered format.
 
-### function: take response of multi-page Textract, and page_number
-### return order sequence JSON for that page Text1->KV/Table->Text2->KV/Table..
-def parsejson_inorder_perpage(response, this_page):
-    # input: response - multipage Textract response JSON
-    #        this_page - page number : 1,2,3..
-    # output: clean parsed JSON for this Page in correct order
+    Args:
+        response (Dict[str, Any]): The Textract response containing document blocks.
+        this_page (int): The page number to process.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries representing parsed JSON data for the specified page.
+    """
     id_list_key_value_table = []
     for block in response['Blocks']:
         if block['Page'] == this_page:
@@ -387,7 +529,7 @@ def parsejson_inorder_perpage(response, this_page):
         this_bottom = text_list[i + 1]['Top'] + text_list[i + 1]['Height']
         this_text_kv = find_key_value_in_range(response, this_top,
                                                this_bottom, this_page)
-        this_text_table = get_tables_fromJSON_inrange(response, this_top,
+        this_text_table = get_tables_from_json_inrange(response, this_top,
                                                       this_bottom, this_page)
         final_json.append({this_text: {'KeyValue': this_text_kv, 'Tables':
             this_text_table}})
@@ -399,7 +541,7 @@ def parsejson_inorder_perpage(response, this_page):
         last_bottom = INITIAL_LAST_BOTTOM
         this_text_kv = find_key_value_in_range(response, last_top,
                                                last_bottom, this_page)
-        this_text_table = get_tables_fromJSON_inrange(response, last_top,
+        this_text_table = get_tables_from_json_inrange(response, last_top,
                                                       last_bottom, this_page)
         final_json.append({last_text: {'KeyValue': this_text_kv, 'Tables':
             this_text_table}})
@@ -407,8 +549,24 @@ def parsejson_inorder_perpage(response, this_page):
     return final_json
 
 
-def write_to_dynamo_db(dd_table_name, id, full_file_path, full_pdf_json):
-    # Get the service resource.
+def write_to_dynamo_db(
+    dd_table_name: str,
+    id: str,
+    full_file_path: str,
+    full_pdf_json: Dict[str, Any]
+) -> None:
+    """
+    Writes structured data to a DynamoDB table, creating the table if it doesn't exist.
+
+    Args:
+        dd_table_name (str): Name of the DynamoDB table.
+        id (str): Unique identifier for the item.
+        full_file_path (str): Full file path of the document.
+        full_pdf_json (Dict[str, Any]): JSON data of the PDF to be stored in the database.
+
+    Raises:
+        Exception: If any error occurs during table creation or item insertion.
+    """
     dynamodb = get_resource('dynamodb')
 
     dd_table_name = dd_table_name \
@@ -506,7 +664,16 @@ def write_to_dynamo_db(dd_table_name, id, full_file_path, full_pdf_json):
         raise Exception(e)
 
 
-def dict_to_item(raw):
+def dict_to_item(raw: Union[Dict[str, Any], str, int]) -> Dict[str, Any]:
+    """
+    Converts a Python dictionary, string, or integer into a format suitable for DynamoDB `PutItem` requests.
+
+    Args:
+        raw (Union[Dict[str, Any], str, int]): Input data to be converted. Can be a dictionary, string, or integer.
+
+    Returns:
+        Dict[str, Any]: A DynamoDB-compatible dictionary structure.
+    """
     if type(raw) is dict:
         resp = {}
         for k, v in raw.items():
@@ -538,7 +705,17 @@ def dict_to_item(raw):
         }
 
 
-def get_client(name, aws_region=None):
+def get_client(name: str, aws_region: str = None) -> boto3.client:
+    """
+    Creates a Boto3 client for a specified AWS service.
+
+    Args:
+        name (str): Name of the AWS service (e.g., 's3', 'dynamodb').
+        aws_region (str, optional): AWS region to configure the client. Defaults to None.
+
+    Returns:
+        boto3.client: A Boto3 client object for the specified AWS service.
+    """
     config = Config(
         retries=dict(
             max_attempts=30
@@ -550,7 +727,17 @@ def get_client(name, aws_region=None):
         return boto3.client(name, config=config)
 
 
-def get_resource(name, aws_region=None):
+def get_resource(name: str, aws_region: str = None) -> boto3.resource:
+    """
+    Creates a Boto3 resource for a specified AWS service.
+
+    Args:
+        name (str): Name of the AWS service (e.g., 's3', 'dynamodb').
+        aws_region (str, optional): AWS region to configure the resource. Defaults to None.
+
+    Returns:
+        boto3.resource: A Boto3 resource object for the specified AWS service.
+    """
     config = Config(
         retries=dict(
             max_attempts=30
