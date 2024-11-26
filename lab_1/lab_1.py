@@ -179,7 +179,7 @@ def find_key_value_in_range(response, top, bottom, this_page):
                     value_map[block_id] = block
 
     ## find key-value pair within given bounding box:
-    kv_pair = {}
+    key_value_pair = {}
     for block_id, key_block in key_map.items():
         value_block = find_value_block(key_block, value_map)
         key = get_text(key_block, block_map)
@@ -188,8 +188,8 @@ def find_key_value_in_range(response, top, bottom, this_page):
                 value_block['Geometry']['BoundingBox']['Top'] +
                 value_block['Geometry']['BoundingBox']['Height'] <=
                 bottom):
-            kv_pair[key] = val
-    return kv_pair
+            key_value_pair[key] = val
+    return key_value_pair
 
 
 def get_rows_columns_map(table_result, blocks_map):
@@ -305,7 +305,7 @@ def find_key_value_in_range_not_in_table(response, top, bottom, this_page):
                                                  this_page)
 
     ## find key-value pair within given bounding box:
-    kv_pair = {}
+    key_value_pair = {}
     for block_id, key_block in key_map.items():
         value_block = find_value_block(key_block, value_map)
         key = get_text(key_block, block_map)
@@ -315,17 +315,17 @@ def find_key_value_in_range_not_in_table(response, top, bottom, this_page):
                 value_block['Geometry']['BoundingBox']['Height'] <=
                 bottom):
 
-            kv_overlap_table_list = []
+            key_value_overlap_table_list = []
             if all_tables_coord is not None:
                 for table_coord in all_tables_coord:
-                    kv_overlap_table_list.append(
+                    key_value_overlap_table_list.append(
                         box_within_box(value_block['Geometry']
                                        ['BoundingBox'], table_coord))
-                if sum(kv_overlap_table_list) == 0:
-                    kv_pair[key] = val
+                if sum(key_value_overlap_table_list) == 0:
+                    key_value_pair[key] = val
             else:
-                kv_pair[key] = val
-    return kv_pair
+                key_value_pair[key] = val
+    return key_value_pair
 
 
 ### function: take response of multi-page Textract, and page_number
@@ -335,7 +335,7 @@ def parsejson_inorder_perpage(response, this_page):
     #        this_page - page number : 1,2,3..
     # output: clean parsed JSON for this Page in correct order
     text_list = []
-    id_list_kv_table = []
+    id_list_key_value_table = []
     for block in response['Blocks']:
         if block['Page'] == this_page:
             if (block['BlockType'] == 'TABLE' or
@@ -345,9 +345,9 @@ def parsejson_inorder_perpage(response, this_page):
                     block['BlockType'] == 'VALUE' or
                     block['BlockType'] == 'SELECTION_ELEMENT'):
 
-                kv_id = block['Id']
-                if kv_id not in id_list_kv_table:
-                    id_list_kv_table.append(kv_id)
+                key_value_id = block['Id']
+                if key_value_id not in id_list_key_value_table:
+                    id_list_key_value_table.append(key_value_id)
 
                 child_id_list = []
                 if 'Relationships' in block.keys():
@@ -357,8 +357,8 @@ def parsejson_inorder_perpage(response, this_page):
                         item for sublist in child_id_list for item in
                         sublist]
                     for childid in flat_child_idlist:
-                        if childid not in id_list_kv_table:
-                            id_list_kv_table.append(childid)
+                        if childid not in id_list_key_value_table:
+                            id_list_key_value_table.append(childid)
     text_list = []
     for block in response['Blocks']:
         if block['Page'] == this_page:
@@ -377,8 +377,8 @@ def parsejson_inorder_perpage(response, this_page):
                         thisline_idlist.append(childid)
 
                 set_line_id = set(thisline_idlist)
-                set_all_kv_table_id = set(id_list_kv_table)
-                if len(set_line_id.intersection(set_all_kv_table_id)) == 0:
+                set_all_key_value_table_id = set(id_list_key_value_table)
+                if len(set_line_id.intersection(set_all_key_value_table_id)) == 0:
                     this_dict = {'Line': block['Text'],
                                 'Left': block['Geometry']['BoundingBox']['Left'],
                                 'Top': block['Geometry']['BoundingBox']['Top'],
