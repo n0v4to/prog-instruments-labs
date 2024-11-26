@@ -48,7 +48,8 @@ def lambda_handler(event, context):
         request["objectName"] = message['DocumentLocation']['S3ObjectName']
         request["outputBucketName"] = os.environ['OUTPUT_BUCKET']
 
-        print("Full path of input file is {}/{}".format(request["bucketName"], request["objectName"]))
+        print("Full path of input file is {}/{}".format(
+            request["bucketName"], request["objectName"]))
 
         processRequest(request)
 
@@ -124,7 +125,8 @@ def processRequest(request):
         Body=json.dumps(finalJSON_allpage).encode('utf-8')
     )
 
-    _writeToDynamoDB("pdf-to-json", objectName, bucketName + '/' + objectName, finalJSON_allpage)
+    _writeToDynamoDB("pdf-to-json", objectName,
+                     bucketName + '/' + objectName, finalJSON_allpage)
 
     return {
         'statusCode': 200,
@@ -166,7 +168,8 @@ def find_Key_value_inrange(response, top, bottom, thisPage):
         if block['Page'] == thisPage:
             block_id = block['Id']
             block_map[block_id] = block
-            if block['BlockType'] == "KEY_VALUE_SET" or block['BlockType'] == 'KEY' or block['BlockType'] == 'VALUE':
+            if (block['BlockType'] == "KEY_VALUE_SET" or
+                block['BlockType'] == 'KEY' or block['BlockType'] == 'VALUE'):
                 if 'KEY' in block['EntityTypes']:
                     key_map[block_id] = block
                 else:
@@ -179,8 +182,9 @@ def find_Key_value_inrange(response, top, bottom, thisPage):
         key = get_text(key_block, block_map)
         val = get_text(value_block, block_map)
         if (value_block['Geometry']['BoundingBox']['Top'] >= top and
-                value_block['Geometry']['BoundingBox']['Top'] + value_block['Geometry']['BoundingBox'][
-                    'Height'] <= bottom):
+                value_block['Geometry']['BoundingBox']['Top'] +
+                value_block['Geometry']['BoundingBox']['Height'] <=
+                bottom):
             kv_pair[key] = val
     return kv_pair
 
@@ -196,7 +200,8 @@ def get_rows_columns_map(table_result, blocks_map):
                     col_index = cell['ColumnIndex']
                     if row_index not in rows:
                         rows[row_index] = {}
-                    rows[row_index][col_index] = get_text(cell, blocks_map)
+                    rows[row_index][col_index] = get_text(cell,
+                                                          blocks_map)
     return rows
 
 
@@ -211,7 +216,8 @@ def get_tables_fromJSON_inrange(response, top, bottom, thisPage):
             if block['BlockType'] == "TABLE":
                 if (block['Geometry']['BoundingBox']['Top'] >= top and
                         block['Geometry']['BoundingBox']['Top'] +
-                        block['Geometry']['BoundingBox']['Height'] <= bottom):
+                        block['Geometry']['BoundingBox']['Height'] <=
+                        bottom):
                     table_blocks.append(block)
 
     if len(table_blocks) <= 0:
@@ -242,7 +248,8 @@ def get_tables_coord_inrange(response, top, bottom, thisPage):
             if block['BlockType'] == "TABLE":
                 if (block['Geometry']['BoundingBox']['Top'] >= top and
                         block['Geometry']['BoundingBox']['Top'] +
-                        block['Geometry']['BoundingBox']['Height'] <= bottom):
+                        block['Geometry']['BoundingBox']['Height'] <=
+                        bottom):
                     table_blocks.append(block)
 
     if len(table_blocks) <= 0:
@@ -258,8 +265,12 @@ def box_within_box(box1, box2):
     # check if bounding box1 is completely within bounding box2
     # box1:{Width,Height,Left,Top}
     # box2:{Width,Height,Left,Top}
-    if box1['Top'] >= box2['Top'] and box1['Left'] >= box2['Left'] and box1['Top'] + box1['Height'] <= box2['Top'] + \
-            box2['Height'] and box1['Left'] + box1['Width'] <= box2['Left'] + box2['Width']:
+    if (box1['Top'] >= box2['Top'] and
+            box1['Left'] >= box2['Left'] and
+            box1['Top'] + box1['Height'] <= box2['Top'] +
+            box2['Height'] and
+            box1['Left'] + box1['Width'] <= box2['Left'] +
+            box2['Width']):
         return True
     else:
         return False
@@ -278,14 +289,17 @@ def find_Key_value_inrange_notInTable(response, top, bottom, thisPage):
         if block['Page'] == thisPage:
             block_id = block['Id']
             block_map[block_id] = block
-            if block['BlockType'] == "KEY_VALUE_SET" or block['BlockType'] == 'KEY' or block['BlockType'] == 'VALUE':
+            if (block['BlockType'] == "KEY_VALUE_SET" or
+                    block['BlockType'] == 'KEY' or
+                    block['BlockType'] == 'VALUE'):
                 if 'KEY' in block['EntityTypes']:
                     key_map[block_id] = block
                 else:
                     value_map[block_id] = block
 
     # get all table coordicates in range:
-    AllTables_coord = get_tables_coord_inrange(response, top, bottom, thisPage)
+    AllTables_coord = get_tables_coord_inrange(response, top, bottom,
+                                               thisPage)
 
     ## find key-value pair within given bounding box:
     kv_pair = {}
@@ -294,13 +308,16 @@ def find_Key_value_inrange_notInTable(response, top, bottom, thisPage):
         key = get_text(key_block, block_map)
         val = get_text(value_block, block_map)
         if (value_block['Geometry']['BoundingBox']['Top'] >= top and
-                value_block['Geometry']['BoundingBox']['Top'] + value_block['Geometry']['BoundingBox'][
-                    'Height'] <= bottom):
+                value_block['Geometry']['BoundingBox']['Top'] +
+                value_block['Geometry']['BoundingBox']['Height'] <=
+                bottom):
 
             kv_overlap_table_list = []
             if AllTables_coord is not None:
                 for table_coord in AllTables_coord:
-                    kv_overlap_table_list.append(box_within_box(value_block['Geometry']['BoundingBox'], table_coord))
+                    kv_overlap_table_list.append(
+                        box_within_box(value_block['Geometry']
+                                       ['BoundingBox'], table_coord))
                 if sum(kv_overlap_table_list) == 0:
                     kv_pair[key] = val
             else:
@@ -318,10 +335,12 @@ def parsejson_inorder_perpage(response, thisPage):
     ID_list_KV_Table = []
     for block in response['Blocks']:
         if block['Page'] == thisPage:
-            if block['BlockType'] == 'TABLE' or block['BlockType'] == 'CELL' or \
-                    block['BlockType'] == 'KEY_VALUE_SET' or block['BlockType'] == 'KEY' or block[
-                'BlockType'] == 'VALUE' or \
-                    block['BlockType'] == 'SELECTION_ELEMENT':
+            if (block['BlockType'] == 'TABLE' or
+                    block['BlockType'] == 'CELL' or
+                    block['BlockType'] == 'KEY_VALUE_SET' or
+                    block['BlockType'] == 'KEY' or
+                    block['BlockType'] == 'VALUE' or
+                    block['BlockType'] == 'SELECTION_ELEMENT'):
 
                 kv_id = block['Id']
                 if kv_id not in ID_list_KV_Table:
@@ -331,7 +350,9 @@ def parsejson_inorder_perpage(response, thisPage):
                 if 'Relationships' in block.keys():
                     for child in block['Relationships']:
                         child_idlist.append(child['Ids'])
-                    flat_child_idlist = [item for sublist in child_idlist for item in sublist]
+                    flat_child_idlist = [
+                        item for sublist in child_idlist for item in
+                        sublist]
                     for childid in flat_child_idlist:
                         if childid not in ID_list_KV_Table:
                             ID_list_KV_Table.append(childid)
@@ -346,7 +367,9 @@ def parsejson_inorder_perpage(response, thisPage):
                 if 'Relationships' in block.keys():
                     for child in block['Relationships']:
                         child_idlist.append(child['Ids'])
-                    flat_child_idlist = [item for sublist in child_idlist for item in sublist]
+                    flat_child_idlist = [
+                        item for sublist in child_idlist for item in
+                        sublist]
                     for childid in flat_child_idlist:
                         thisline_idlist.append(childid)
 
@@ -365,18 +388,24 @@ def parsejson_inorder_perpage(response, thisPage):
         thisText = TextList[i]['Line']
         thisTop = TextList[i]['Top']
         thisBottom = TextList[i + 1]['Top'] + TextList[i + 1]['Height']
-        thisText_KV = find_Key_value_inrange(response, thisTop, thisBottom, thisPage)
-        thisText_Table = get_tables_fromJSON_inrange(response, thisTop, thisBottom, thisPage)
-        finalJSON.append({thisText: {'KeyValue': thisText_KV, 'Tables': thisText_Table}})
+        thisText_KV = find_Key_value_inrange(response, thisTop,
+                                             thisBottom, thisPage)
+        thisText_Table = get_tables_fromJSON_inrange(response, thisTop,
+                                                     thisBottom, thisPage)
+        finalJSON.append({thisText: {'KeyValue': thisText_KV, 'Tables':
+            thisText_Table}})
 
     if (len(TextList) > 0):
         ## last line Text to bottom of page:
         lastText = TextList[len(TextList) - 1]['Line']
         lastTop = TextList[len(TextList) - 1]['Top']
         lastBottom = 1
-        thisText_KV = find_Key_value_inrange(response, lastTop, lastBottom, thisPage)
-        thisText_Table = get_tables_fromJSON_inrange(response, lastTop, lastBottom, thisPage)
-        finalJSON.append({lastText: {'KeyValue': thisText_KV, 'Tables': thisText_Table}})
+        thisText_KV = find_Key_value_inrange(response, lastTop,
+                                             lastBottom, thisPage)
+        thisText_Table = get_tables_fromJSON_inrange(response, lastTop,
+                                                     lastBottom, thisPage)
+        finalJSON.append({lastText: {'KeyValue': thisText_KV, 'Tables':
+            thisText_Table}})
 
     return finalJSON
 
@@ -427,19 +456,24 @@ def _writeToDynamoDB(dd_table_name, Id, fullFilePath, fullPdfJson):
             # Wait until the table exists, this will take a minute or so
             table.meta.client.get_waiter('table_exists').wait(TableName=dd_table_name)
             # Print out some data about the table.
-            print("Table successfully created. Item count is: " + str(table.item_count))
+            print("Table successfully created. Item count is: " +
+                  str(table.item_count))
     except ClientError as e:
-        if e.response['Error']['Code'] in ["ThrottlingException", "ProvisionedThroughputExceededException"]:
-            msg = f"DynamoDB ] Write Failed from DynamoDB, Throttling Exception [{e}] [{traceback.format_exc()}]"
+        if e.response['Error']['Code'] in ["ThrottlingException",
+                                           "ProvisionedThroughputExceededException"]:
+            msg = (f"DynamoDB ] Write Failed from DynamoDB, Throttling "
+                   f"Exception [{e}] [{traceback.format_exc()}]")
             logging.warning(msg)
             raise e
         else:
-            msg = f"DynamoDB Write Failed from DynamoDB Exception [{e}] [{traceback.format_exc()}]"
+            msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+                   f"[{traceback.format_exc()}]")
             logging.error(msg)
             raise e
 
     except Exception as e:
-        msg = f"DynamoDB Write Failed from DynamoDB Exception [{e}] [{traceback.format_exc()}]"
+        msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+               f"[{traceback.format_exc()}]")
         logging.error(msg)
         raise Exception(e)
 
@@ -456,18 +490,22 @@ def _writeToDynamoDB(dd_table_name, Id, fullFilePath, fullPdfJson):
         }
         )
     except ClientError as e:
-        if e.response['Error']['Code'] in ["ThrottlingException", "ProvisionedThroughputExceededException"]:
-            msg = f"DynamoDB ] Write Failed from DynamoDB, Throttling Exception [{e}] [{traceback.format_exc()}]"
+        if e.response['Error']['Code'] in ["ThrottlingException",
+                                           "ProvisionedThroughputExceededException"]:
+            msg = (f"DynamoDB ] Write Failed from DynamoDB, Throttling "
+                   f"Exception [{e}] [{traceback.format_exc()}]")
             logging.warning(msg)
             raise e
 
         else:
-            msg = f"DynamoDB Write Failed from DynamoDB Exception [{e}] [{traceback.format_exc()}]"
+            msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+                   f"[{traceback.format_exc()}]")
             logging.error(msg)
             raise e
 
     except Exception as e:
-        msg = f"DynamoDB Write Failed from DynamoDB Exception [{e}] [{traceback.format_exc()}]"
+        msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+               f"[{traceback.format_exc()}]")
         logging.error(msg)
         raise Exception(e)
 
