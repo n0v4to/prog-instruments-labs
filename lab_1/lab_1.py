@@ -83,57 +83,6 @@ def getJobResults(api, jobId):
         finalJSON_allpage.append({'Page': thisPage, 'Content': thisPage_json})
         print(f"Page {thisPage} parsed")
 
-    # blocks = []
-    # analysis = {}
-    # pages = []
-    # thisPage = 1
-    # finalJSON_allpage=[]
-    # time.sleep(5)
-
-    # client = getClient('textract', 'us-east-1')
-    # response = client.get_document_analysis(JobId=jobId)
-    # analysis = copy.deepcopy(response)
-
-    # pages.append(response)
-    # print("Resultset page recieved: {}".format(len(pages)))
-    # nextToken = None
-    # if('NextToken' in response):
-    #     nextToken = response['NextToken']
-    #     print("Next token: {}".format(nextToken))
-
-    # thisPage_json=parsejson_inorder_perpage(response,thisPage)
-
-    # finalJSON_allpage.append({'Page':thisPage,'Content':thisPage_json})
-    # print("Page {} json is {}".format(thisPage, response))
-
-    # while(nextToken):
-    #     try:
-    #         time.sleep(5)
-    #         response = client.get_document_analysis(JobId=jobId, NextToken=nextToken)
-
-    #         pages.append(response)
-    #         print("Resultset page recieved: {}".format(response))
-    #         nextToken = None
-    #         if('NextToken' in response):
-    #             nextToken = response['NextToken']
-    #             print("Next token: {}".format(nextToken))
-
-    #         thisPage=thisPage+1
-
-    #         thisPage_json=parsejson_inorder_perpage(response,thisPage)
-
-    #         finalJSON_allpage.append({'Page':thisPage,'Content':thisPage_json})
-    #         print("Page {} json is {}".format(thisPage, response))
-
-    #     except Exception as e:
-    #         if(e.__class__.__name__ == 'ProvisionedThroughputExceededException'):
-    #             print("ProvisionedThroughputExceededException.")
-    #             print("Waiting for few seconds...")
-    #             time.sleep(5)
-    #             print("Waking up...")
-
-    # print('The resulting json is {}'.format(finalJSON_allpage))
-
     return finalJSON_allpage
 
 
@@ -208,10 +157,6 @@ def get_text(result, blocks_map):
 
 
 def find_Key_value_inrange(response, top, bottom, thisPage):
-    # given Textract Response, and [top,bottom] - bounding box need to search for
-    # find Key:value pairs within the bounding box
-
-    # get key_map,value_map,block_map from response (textract JSON)
 
     blocks = response['Blocks']
     key_map = {}
@@ -408,13 +353,11 @@ def parsejson_inorder_perpage(response, thisPage):
                 setLineID = set(thisline_idlist)
                 setAllKVTableID = set(ID_list_KV_Table)
                 if len(setLineID.intersection(setAllKVTableID)) == 0:
-                    #           print(block['Text'])
                     thisDict = {'Line': block['Text'],
                                 'Left': block['Geometry']['BoundingBox']['Left'],
                                 'Top': block['Geometry']['BoundingBox']['Top'],
                                 'Width': block['Geometry']['BoundingBox']['Width'],
                                 'Height': block['Geometry']['BoundingBox']['Height']}
-                    #           print(thisDict)
                     TextList.append(thisDict)
 
     finalJSON = []
@@ -422,7 +365,6 @@ def parsejson_inorder_perpage(response, thisPage):
         thisText = TextList[i]['Line']
         thisTop = TextList[i]['Top']
         thisBottom = TextList[i + 1]['Top'] + TextList[i + 1]['Height']
-        #           thisText_KV=find_Key_value_inrange_notInTable(response,thisTop,thisBottom,thisPage)
         thisText_KV = find_Key_value_inrange(response, thisTop, thisBottom, thisPage)
         thisText_Table = get_tables_fromJSON_inrange(response, thisTop, thisBottom, thisPage)
         finalJSON.append({thisText: {'KeyValue': thisText_KV, 'Tables': thisText_Table}})
@@ -432,7 +374,6 @@ def parsejson_inorder_perpage(response, thisPage):
         lastText = TextList[len(TextList) - 1]['Line']
         lastTop = TextList[len(TextList) - 1]['Top']
         lastBottom = 1
-        #       thisText_KV=find_Key_value_inrange_notInTable(response,lastTop,lastBottom,thisPage)
         thisText_KV = find_Key_value_inrange(response, lastTop, lastBottom, thisPage)
         thisText_Table = get_tables_fromJSON_inrange(response, lastTop, lastBottom, thisPage)
         finalJSON.append({lastText: {'KeyValue': thisText_KV, 'Tables': thisText_Table}})
@@ -466,8 +407,6 @@ def _writeToDynamoDB(dd_table_name, Id, fullFilePath, fullPdfJson):
 
         existing_tables = list([x.name for x in dynamodb.tables.all()])
 
-        # existing_tables = dynamodb_client.list_tables()['TableNames']
-
         if dd_table_name not in existing_tables:
             table = dynamodb.create_table(
                 TableName=dd_table_name,
@@ -489,7 +428,6 @@ def _writeToDynamoDB(dd_table_name, Id, fullFilePath, fullPdfJson):
             table.meta.client.get_waiter('table_exists').wait(TableName=dd_table_name)
             # Print out some data about the table.
             print("Table successfully created. Item count is: " + str(table.item_count))
-    # except dynamodb_client.exceptions.ResourceInUseException:
     except ClientError as e:
         if e.response['Error']['Code'] in ["ThrottlingException", "ProvisionedThroughputExceededException"]:
             msg = f"DynamoDB ] Write Failed from DynamoDB, Throttling Exception [{e}] [{traceback.format_exc()}]"
