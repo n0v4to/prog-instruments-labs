@@ -14,19 +14,14 @@
 import json
 import os
 import copy
-import urllib.parse
-import time
 import logging
 import datetime
 import traceback
 from typing import Any, Dict, Union, Optional, List
-
-import boto3
-import pandas as pd
-import numpy as np
 from botocore.exceptions import ClientError
 from botocore.client import Config
-from urllib.parse import unquote
+
+import boto3
 
 MIN_TABLE_NAME_LENGTH = 4
 INITIAL_LAST_BOTTOM = 1
