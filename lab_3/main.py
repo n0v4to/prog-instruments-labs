@@ -91,5 +91,6 @@ def verify_data(path_csv: str, path_json: str) -> list:
 
 if __name__ == "__main__":
     invalid = verify_data(CSV_PATH, PATTERNS)
+    print(invalid)
     hash_sum = calculate_checksum(invalid)
     serialize_result(VAR, hash_sum)
