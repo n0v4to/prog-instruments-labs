@@ -317,7 +317,7 @@ def write_to_dynamo_db(
     if len(dd_table_name) <= MIN_TABLE_NAME_LENGTH:
         dd_table_name = dd_table_name + '-xxxx'
 
-    print("DynamoDB table name is {}".format(dd_table_name))
+    logger.info("DynamoDB table name is %s", dd_table_name)
 
     # Create the DynamoDB table.
     try:
@@ -325,6 +325,7 @@ def write_to_dynamo_db(
         existing_tables = list([x.name for x in dynamodb.tables.all()])
 
         if dd_table_name not in existing_tables:
+            logger.info("Creating DynamoDB table: %s", dd_table_name)
             table = dynamodb.create_table(
                 TableName=dd_table_name,
                 KeySchema=[
@@ -344,8 +345,8 @@ def write_to_dynamo_db(
             # Wait until the table exists, this will take a minute or so
             table.meta.client.get_waiter('table_exists').wait(TableName=dd_table_name)
             # Print out some data about the table.
-            print("Table successfully created. Item count is: " +
-                  str(table.item_count))
+            logger.info("Table successfully created. Item count is: %d",
+                        table.item_count)
     except ClientError as e:
         if e.response['Error']['Code'] in ["ThrottlingException",
                                            "ProvisionedThroughputExceededException"]:
@@ -368,6 +369,7 @@ def write_to_dynamo_db(
     table = dynamodb.Table(dd_table_name)
 
     try:
+        logger.info("Inserting item into DynamoDB table: %s", dd_table_name)
         table.put_item(Item=
         {
             'Id': id,
@@ -377,6 +379,7 @@ def write_to_dynamo_db(
             'DateTime': datetime.datetime.utcnow().isoformat(),
         }
         )
+        logger.info("Item successfully inserted with ID: %s", id)
     except ClientError as e:
         if e.response['Error']['Code'] in ["ThrottlingException",
                                            "ProvisionedThroughputExceededException"]:
