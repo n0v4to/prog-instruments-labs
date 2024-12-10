@@ -39,11 +39,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> None:
         event (Dict[str, Any]): The event data containing SNS records.
         context (Any): The Lambda context object providing runtime information.
     """
-    print("Received event: " + json.dumps(event))
+    logger.info("Received event: %s", json.dumps(event))
 
     for record in event['Records']:
         message = json.loads(record['Sns']['Message'])
-        print("Message: {}".format(message))
+        logger.info("Message: %s", message)
 
         request = {}
 
@@ -55,10 +55,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> None:
         request["objectName"] = message['DocumentLocation']['S3ObjectName']
         request["outputBucketName"] = os.environ['OUTPUT_BUCKET']
 
-        print("Full path of input file is {}/{}".format(
-            request["bucketName"], request["objectName"]))
+        logger.info("Full path of input file is %s/%s",
+                    request["bucketName"], request["objectName"])
 
-        process_request(request)
+        try:
+            process_request(request)
+        except Exception as e:
+            logger.error("Error processing request: %s", str(e))
+            logger.debug(traceback.format_exc())
 
 
 def get_job_results(api: str, job_id: str) -> List[Dict[str, Any]]:
@@ -72,6 +76,7 @@ def get_job_results(api: str, job_id: str) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: A list of parsed page contents with their page numbers.
     """
+    logger.info("Getting job results for Job ID: %s using API: %s", job_id, api)
     text_tract_client = get_client('textract', 'us-east-1')
     blocks = []
     response = text_tract_client.get_document_analysis(
@@ -93,12 +98,13 @@ def get_job_results(api: str, job_id: str) -> List[Dict[str, Any]]:
 
     total_pages = response['DocumentMetadata']['Pages']
     final_json_all_page = []
-    print(total_pages)
+    logger.info("Total pages found: %d", total_pages)
+
     for i in range(total_pages):
         this_page = i + 1
         this_page_json = parsejson_inorder_perpage(analysis, this_page)
         final_json_all_page.append({'Page': this_page, 'Content': this_page_json})
-        print(f"Page {this_page} parsed")
+        logger.info("Page %d parsed", this_page)
 
     return final_json_all_page
 
@@ -116,7 +122,7 @@ def process_request(request: Dict[str, Any]) -> Dict[str, Any]:
     """
     s3_client = get_client('s3', 'us-east-1')
 
-    print("Request : {}".format(request))
+    logger.info("Processing request: %s", request)
 
     job_id = request['job_id']
     job_api = request['jobAPI']
@@ -275,3 +281,118 @@ def get_rows_columns_map(
                     rows[row_index][col_index] = get_text(cell,
                                                           blocks_map)
     return rows
+
+
+def write_to_dynamo_db(
+    dd_table_name: str,
+    id: str,
+    full_file_path: str,
+    full_pdf_json: Dict[str, Any]
+) -> None:
+    """
+    Writes structured data to a DynamoDB table, creating the table if it doesn't exist.
+
+    Args:
+        dd_table_name (str): Name of the DynamoDB table.
+        id (str): Unique identifier for the item.
+        full_file_path (str): Full file path of the document.
+        full_pdf_json (Dict[str, Any]): JSON data of the PDF to be stored in the database.
+
+    Raises:
+        Exception: If any error occurs during table creation or item insertion.
+    """
+    dynamodb = get_resource('dynamodb')
+
+    dd_table_name = dd_table_name \
+        .replace(" ", "-") \
+        .replace("(", "-") \
+        .replace(")", "-") \
+        .replace("&", "-") \
+        .replace(",", " ") \
+        .replace(":", "-") \
+        .replace('/', '--') \
+        .replace("#", 'No') \
+        .replace('"', 'Inch')
+
+    if len(dd_table_name) <= MIN_TABLE_NAME_LENGTH:
+        dd_table_name = dd_table_name + '-xxxx'
+
+    print("DynamoDB table name is {}".format(dd_table_name))
+
+    # Create the DynamoDB table.
+    try:
+
+        existing_tables = list([x.name for x in dynamodb.tables.all()])
+
+        if dd_table_name not in existing_tables:
+            table = dynamodb.create_table(
+                TableName=dd_table_name,
+                KeySchema=[
+                    {
+                        'AttributeName': 'Id',
+                        'KeyType': 'HASH'
+                    }
+                ],
+                AttributeDefinitions=[
+                    {
+                        'AttributeName': 'Id',
+                        'AttributeType': 'S'
+                    },
+                ],
+                BillingMode='PAY_PER_REQUEST',
+            )
+            # Wait until the table exists, this will take a minute or so
+            table.meta.client.get_waiter('table_exists').wait(TableName=dd_table_name)
+            # Print out some data about the table.
+            print("Table successfully created. Item count is: " +
+                  str(table.item_count))
+    except ClientError as e:
+        if e.response['Error']['Code'] in ["ThrottlingException",
+                                           "ProvisionedThroughputExceededException"]:
+            msg = (f"DynamoDB ] Write Failed from DynamoDB, Throttling "
+                   f"Exception [{e}] [{traceback.format_exc()}]")
+            logging.warning(msg)
+            raise e
+        else:
+            msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+                   f"[{traceback.format_exc()}]")
+            logging.error(msg)
+            raise e
+
+    except Exception as e:
+        msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+               f"[{traceback.format_exc()}]")
+        logging.error(msg)
+        raise Exception(e)
+
+    table = dynamodb.Table(dd_table_name)
+
+    try:
+        table.put_item(Item=
+        {
+            'Id': id,
+            'FilePath': full_file_path,
+            'PdfJsonRegularFormat': str(full_pdf_json),
+            'PdfJsonDynamoFormat': full_pdf_json,
+            'DateTime': datetime.datetime.utcnow().isoformat(),
+        }
+        )
+    except ClientError as e:
+        if e.response['Error']['Code'] in ["ThrottlingException",
+                                           "ProvisionedThroughputExceededException"]:
+            msg = (f"DynamoDB ] Write Failed from DynamoDB, Throttling "
+                   f"Exception [{e}] [{traceback.format_exc()}]")
+            logging.warning(msg)
+            raise e
+
+        else:
+            msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+                   f"[{traceback.format_exc()}]")
+            logging.error(msg)
+            raise e
+
+    except Exception as e:
+        msg = (f"DynamoDB Write Failed from DynamoDB Exception [{e}] "
+               f"[{traceback.format_exc()}]")
+        logging.error(msg)
+        raise Exception(e)
